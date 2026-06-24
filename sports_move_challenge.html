@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPORTS MOVE CHALLENGE</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- TensorFlow.js & Pose Detection Models -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+    
+    <!-- Canvas Confetti for Celebration -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #111827;
+            color: white;
+            user-select: none;
+        }
+
+        /* Video and Canvas Setup */
+        #webcam, #output-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            /* Mirror the camera */
+            transform: scaleX(-1);
+            z-index: 1;
+        }
+        
+        #output-canvas {
+            z-index: 2;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through if needed */
+        }
+
+        /* Screen Management */
+        .screen {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 20;
+            pointer-events: auto;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        /* Setup Screen */
+        #setup-screen {
+            background: linear-gradient(135deg, #4f46e5, #ec4899);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Game Zones */
+        .zone {
+            position: absolute;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            border: 4px dashed transparent;
+        }
+
+        .zone-text {
+            font-size: 4rem;
+            font-weight: 900;
+            text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.8);
+            text-align: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 20px;
+            backdrop-filter: blur(5px);
+            transition: transform 0.2s;
+        }
+
+        /* 2 Zones (Normal) */
+        .zone-left { top: 0; left: 0; width: 50vw; height: 100vh; border-right: 2px dashed rgba(255,255,255,0.3); }
+        .zone-right { top: 0; left: 50vw; width: 50vw; height: 100vh; border-left: 2px dashed rgba(255,255,255,0.3); }
+
+        /* 4 Zones (Bonus) */
+        .zone-tl { top: 0; left: 0; width: 50vw; height: 50vh; border-right: 2px dashed rgba(255,255,255,0.3); border-bottom: 2px dashed rgba(255,255,255,0.3); }
+        .zone-tr { top: 0; left: 50vw; width: 50vw; height: 50vh; border-left: 2px dashed rgba(255,255,255,0.3); border-bottom: 2px dashed rgba(255,255,255,0.3); }
+        .zone-bl { top: 50vh; left: 0; width: 50vw; height: 50vh; border-right: 2px dashed rgba(255,255,255,0.3); border-top: 2px dashed rgba(255,255,255,0.3); }
+        .zone-br { top: 50vh; left: 50vw; width: 50vw; height: 50vh; border-left: 2px dashed rgba(255,255,255,0.3); border-top: 2px dashed rgba(255,255,255,0.3); }
+
+        .zone.active-hover {
+            background-color: rgba(255, 255, 255, 0.3);
+            border-color: #fbbf24;
+            box-shadow: inset 0 0 50px rgba(251, 191, 36, 0.5);
+        }
+        
+        .zone.active-hover .zone-text {
+            transform: scale(1.1);
+            color: #fbbf24;
+        }
+
+        /* Progress Bar for Selection */
+        .select-progress {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            height: 20px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            overflow: hidden;
+            display: none;
+        }
+        .select-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: #fbbf24;
+            transition: width 0.1s linear;
+        }
+        .zone.active-hover .select-progress { display: block; }
+
+        /* UI Elements */
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+        }
+
+        #question-box {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            text-align: center;
+            padding: 20px;
+            font-size: 2.5rem;
+            font-weight: 800;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 15;
+            transition: all 0.3s;
+        }
+
+        .score-box {
+            position: absolute;
+            top: 20px;
+            padding: 10px 20px;
+            font-size: 2rem;
+            font-weight: bold;
+            z-index: 15;
+        }
+        #team-a-score { left: 20px; border-bottom: 5px solid #3b82f6; }
+        #team-b-score { right: 20px; border-bottom: 5px solid #ef4444; }
+
+        .active-team {
+            animation: pulse-team 1.5s infinite;
+        }
+
+        @keyframes pulse-team {
+            0% { transform: scale(1); box-shadow: 0 0 10px currentColor; }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px currentColor; }
+            100% { transform: scale(1); box-shadow: 0 0 10px currentColor; }
+        }
+
+        #timer-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 4rem;
+            font-weight: 900;
+            width: 100px;
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.8);
+            color: #10b981;
+            z-index: 15;
+            border: 4px solid currentColor;
+        }
+
+        .timer-warning { color: #ef4444 !important; animation: shake 0.5s infinite; }
+
+        @keyframes shake {
+            0% { transform: translateX(-50%) rotate(0deg); }
+            25% { transform: translateX(-52%) rotate(-5deg); }
+            50% { transform: translateX(-50%) rotate(0deg); }
+            75% { transform: translateX(-48%) rotate(5deg); }
+            100% { transform: translateX(-50%) rotate(0deg); }
+        }
+
+        /* Feedback Popup */
+        #feedback-popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            font-size: 6rem;
+            font-weight: 900;
+            text-align: center;
+            z-index: 50;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+
+        #feedback-popup.show {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+        }
+
+        .feedback-correct { color: #10b981; }
+        .feedback-wrong { color: #ef4444; }
+
+        /* Loader */
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #ec4899;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toggle Switch styling */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #10b981;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #10b981;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. SETUP SCREEN (TEACHER MODE) -->
+    <div id="setup-screen" class="screen active">
+        <div class="glass-panel p-8 max-w-2xl w-full mx-4 shadow-2xl">
+            <h1 class="text-5xl font-black text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-500 flex justify-center items-center gap-4">
+                <i class="fas fa-gamepad"></i> SPORTS MOVE CHALLENGE
+            </h1>
+            <p class="text-center text-gray-300 mb-8 text-xl">เกมเรียนรู้คำศัพท์กีฬาผ่านการเคลื่อนไหว</p>
+            
+            <div id="loading-model" class="flex flex-col items-center justify-center py-10">
+                <div class="loader mb-4"></div>
+                <p class="text-xl animate-pulse">กำลังโหลดระบบ AI ตรวจจับร่างกาย... โปรดรอสักครู่</p>
+            </div>
+
+            <form id="setup-form" class="space-y-6 hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-lg mb-2"><i class="fas fa-list-ol text-blue-400"></i> จำนวนข้อ (รวมทั้งหมด)</label>
+                        <input type="number" id="setting-questions" min="5" max="50" value="10" class="w-full bg-gray-800 text-white rounded-lg p-3 text-xl border border-gray-600 focus:border-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-lg mb-2"><i class="fas fa-stopwatch text-red-400"></i> เวลาต่อข้อ (วินาที)</label>
+                        <input type="number" id="setting-time" min="5" max="30" value="10" class="w-full bg-gray-800 text-white rounded-lg p-3 text-xl border border-gray-600 focus:border-blue-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="space-y-4 pt-4 border-t border-gray-600">
+                    <div class="flex items-center justify-between">
+                        <label class="text-lg"><i class="fas fa-bolt text-yellow-400"></i> เปิดโหมด Bonus Round (ทุก 5 ข้อ)</label>
+                        <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" id="setting-bonus" checked class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 transition-transform duration-200 ease-in-out"/>
+                            <label for="setting-bonus" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-400 cursor-pointer"></label>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <label class="text-lg"><i class="fas fa-volume-up text-green-400"></i> เปิดเสียง (Sound Effects)</label>
+                        <div class="relative inline-block w-12 mr-2 align-middle select-none transition duration-200 ease-in">
+                            <input type="checkbox" id="setting-sound" checked class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer z-10 transition-transform duration-200 ease-in-out"/>
+                            <label for="setting-sound" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-400 cursor-pointer"></label>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600 text-white font-bold py-4 px-8 rounded-xl text-2xl shadow-lg transform transition hover:scale-105 mt-6">
+                    <i class="fas fa-play-circle mr-2"></i> เริ่มเกม! (START)
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. GAME SCREEN -->
+    <div id="game-screen" class="screen">
+        <!-- Camera & Canvas Layers -->
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="output-canvas"></canvas>
+
+        <!-- UI Layer -->
+        <div id="ui-layer">
+            <!-- Header Information -->
+            <div id="team-a-score" class="score-box glass-panel text-blue-400">
+                <div class="text-sm uppercase tracking-widest">Team A (Blue)</div>
+                <div class="score-val text-4xl">0</div>
+                <div class="combo-text text-xs text-yellow-300 h-4"></div>
+            </div>
+
+            <div id="timer-box">10</div>
+
+            <div id="team-b-score" class="score-box glass-panel text-red-400">
+                <div class="text-sm uppercase tracking-widest">Team B (Red)</div>
+                <div class="score-val text-4xl">0</div>
+                <div class="combo-text text-xs text-yellow-300 h-4"></div>
+            </div>
+
+            <!-- Question Area -->
+            <div id="question-box" class="glass-panel">
+                <div id="q-number" class="text-lg text-gray-300 mb-1">Question 1</div>
+                <div id="q-text">Ready? Move to select your answer!</div>
+            </div>
+
+            <!-- Zones Container -->
+            <div id="zones-container">
+                <!-- Injected dynamically based on 2 or 4 choices -->
+            </div>
+
+            <!-- Feedback Popup -->
+            <div id="feedback-popup">
+                <div id="feedback-icon"></div>
+                <div id="feedback-text"></div>
+            </div>
+            
+            <!-- Indicator where AI sees center of body -->
+            <div id="body-center-indicator" style="display:none; position:absolute; width:20px; height:20px; background:red; border-radius:50%; z-index:100; transform:translate(-50%, -50%); border:2px solid white;"></div>
+        </div>
+    </div>
+
+    <!-- 3. RESULT SCREEN -->
+    <div id="result-screen" class="screen bg-gray-900 flex-col items-center justify-center">
+        <div class="glass-panel p-10 max-w-3xl w-full mx-4 text-center">
+            <h1 class="text-6xl font-black mb-4 text-yellow-400 tracking-wider">GAME OVER</h1>
+            
+            <div id="winner-announcement" class="text-5xl font-bold mb-8 animate-bounce">
+                🏆 WINNER: <span id="winner-name">TEAM A</span>!
+            </div>
+
+            <div class="grid grid-cols-2 gap-8 mb-8">
+                <div class="bg-blue-900 p-6 rounded-xl border-2 border-blue-500">
+                    <h2 class="text-2xl text-blue-300 mb-2">TEAM A</h2>
+                    <p class="text-5xl font-bold" id="final-score-a">0</p>
+                </div>
+                <div class="bg-red-900 p-6 rounded-xl border-2 border-red-500">
+                    <h2 class="text-2xl text-red-300 mb-2">TEAM B</h2>
+                    <p class="text-5xl font-bold" id="final-score-b">0</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-lg mb-8 text-lg">
+                <div class="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                        <p class="text-gray-400">ตอบถูกทั้งหมด</p>
+                        <p class="text-2xl text-green-400 font-bold"><span id="stat-correct">0</span></p>
+                    </div>
+                    <div>
+                        <p class="text-gray-400">ตอบผิด/หมดเวลา</p>
+                        <p class="text-2xl text-red-400 font-bold"><span id="stat-wrong">0</span></p>
+                    </div>
+                    <div>
+                        <p class="text-gray-400">Bonus ที่ได้</p>
+                        <p class="text-2xl text-yellow-400 font-bold"><span id="stat-bonus">0</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="location.reload()" class="bg-white text-gray-900 font-bold py-3 px-8 rounded-full text-2xl hover:bg-gray-200 transition shadow-lg">
+                <i class="fas fa-redo"></i> เล่นใหม่อีกครั้ง (Play Again)
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // --- 1. GAME DATA & VOCABULARY ---
+        const vocabPool = [
+            { word: "Football", hint: "A sport where you kick a ball into a goal.", icon: "⚽" },
+            { word: "Basketball", hint: "A sport played with a hoop and a bouncy ball.", icon: "🏀" },
+            { word: "Volleyball", hint: "Players hit a ball over a high net with their hands.", icon: "🏐" },
+            { word: "Tennis", hint: "Uses a racket to hit a ball over a low net.", icon: "🎾" },
+            { word: "Badminton", hint: "Uses a racket to hit a shuttlecock.", icon: "🏸" },
+            { word: "Swimming", hint: "A sport done in the water (pool or ocean).", icon: "🏊" },
+            { word: "Cycling", hint: "Riding a bicycle for speed or distance.", icon: "🚴" },
+            { word: "Running", hint: "Moving on foot very fast, like a marathon.", icon: "🏃" },
+            { word: "Rugby", hint: "An oval ball carried and passed backwards.", icon: "🏉" },
+            { word: "Baseball", hint: "Hit a ball with a bat and run around bases.", icon: "⚾" },
+            { word: "Golf", hint: "Hit a small ball into a hole using clubs.", icon: "⛳" },
+            { word: "Table Tennis", hint: "Also known as ping-pong, played on a table.", icon: "🏓" },
+            { word: "Hockey", hint: "Use a curved stick to hit a puck or ball.", icon: "🏒" },
+            { word: "Boxing", hint: "Fighting with padded gloves in a ring.", icon: "🥊" },
+            { word: "Karate", hint: "A martial art using hands and feet.", icon: "🥋" },
+            { word: "Surfing", hint: "Riding waves on a board in the ocean.", icon: "🏄" },
+            { word: "Skiing", hint: "Sliding on snow using long flat boards.", icon: "⛷️" },
+            { word: "Archery", hint: "Shooting arrows at a target with a bow.", icon: "🏹" },
+            { word: "Gymnastics", hint: "Exercises involving balance, strength, and flips.", icon: "🤸" },
+            { word: "Taekwondo", hint: "A Korean martial art known for kicking techniques.", icon: "🥋" }
+        ];
+
+        // --- 2. GAME STATE ---
+        let state = {
+            status: 'setup', // setup, playing, pausing, gameover
+            settings: {
+                totalQuestions: 10,
+                timePerQuestion: 10,
+                bonusEnabled: true,
+                soundEnabled: true
+            },
+            currentQuestionIndex: 0,
+            questions: [],
+            currentTeam: 'A', // A or B
+            scores: { A: 0, B: 0 },
+            combos: { A: 0, B: 0 },
+            stats: { correct: 0, wrong: 0, bonusGot: 0 },
+            timer: 0,
+            timerInterval: null,
+            
+            // Pose Tracking State
+            activeZone: null,
+            zoneEntryTime: 0,
+            isProcessingAnswer: false
+        };
+
+        const REQUIRED_HOVER_TIME = 1000; // 1 second to select
+
+        // --- 3. AUDIO SYNTHESIZER ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (!state.settings.soundEnabled) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'tick') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'correct') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.2);
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            } else if (type === 'wrong') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            } else if (type === 'bonus') {
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.1);
+                osc.frequency.setValueAtTime(1000, audioCtx.currentTime + 0.2);
+                osc.frequency.setValueAtTime(1200, audioCtx.currentTime + 0.3);
+                gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.5);
+            }
+        }
+
+        // --- 4. TENSORFLOW & POSE DETECTION ---
+        let detector;
+        let video = document.getElementById('webcam');
+        let canvas = document.getElementById('output-canvas');
+        let ctx = canvas.getContext('2d');
+        let animationFrameId;
+
+        async function initAI() {
+            try {
+                // Request Camera Access First
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } 
+                });
+                video.srcObject = stream;
+                
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
+                });
+
+                // Load Pose Model
+                const model = poseDetection.SupportedModels.BlazePose;
+                const detectorConfig = {
+                    runtime: 'tfjs',
+                    modelType: 'lite' // lite for speed, full for accuracy
+                };
+                detector = await poseDetection.createDetector(model, detectorConfig);
+                
+                // Setup Canvas Size
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+
+                // Hide Loader, Show Setup Form
+                document.getElementById('loading-model').style.display = 'none';
+                document.getElementById('setup-form').style.display = 'block';
+
+            } catch (error) {
+                console.error("Error initializing AI:", error);
+                document.getElementById('loading-model').innerHTML = 
+                    `<p class="text-red-500"><i class="fas fa-exclamation-triangle"></i> ข้อผิดพลาด: ไม่สามารถเปิดกล้องได้ หรือโมเดลโหลดไม่สำเร็จ<br>กรุณาอนุญาตการใช้งานกล้องและรีเฟรชหน้าเว็บ</p>`;
+            }
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        // Tracking Loop
+        async function detectPose() {
+            if (state.status === 'gameover') return;
+
+            if (detector && video.readyState >= 2) {
+                const poses = await detector.estimatePoses(video, { flipHorizontal: false }); // We flip drawing via math
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                if (poses.length > 0) {
+                    const pose = poses[0];
+                    drawSkeleton(pose);
+                    processPose(pose);
+                } else {
+                    resetZoneTimer();
+                }
+            }
+            
+            animationFrameId = requestAnimationFrame(detectPose);
+        }
+
+        function drawSkeleton(pose) {
+            const keypoints = pose.keypoints;
+            
+            // Draw Keypoints
+            ctx.fillStyle = 'rgba(16, 185, 129, 0.8)'; // Emerald green
+            for (let i = 0; i < keypoints.length; i++) {
+                const point = keypoints[i];
+                if (point.score > 0.5) {
+                    // Map video coords to canvas coords, and mirror X
+                    const x = canvas.width - (point.x / video.videoWidth * canvas.width);
+                    const y = point.y / video.videoHeight * canvas.height;
+                    
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+            }
+
+            // Draw skeleton lines (simplified list of connections)
+            const connections = [
+                [5,7], [6,8], [5,6], // shoulders
+                [5,11], [6,12], [11,12], // torso
+                [11,13], [13,15], [12,14], [14,16] // legs (partial)
+            ];
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.lineWidth = 3;
+            
+            connections.forEach(([i, j]) => {
+                const p1 = keypoints[i];
+                const p2 = keypoints[j];
+                
+                if (p1 && p2 && p1.score > 0.5 && p2.score > 0.5) {
+                    const x1 = canvas.width - (p1.x / video.videoWidth * canvas.width);
+                    const y1 = p1.y / video.videoHeight * canvas.height;
+                    const x2 = canvas.width - (p2.x / video.videoWidth * canvas.width);
+                    const y2 = p2.y / video.videoHeight * canvas.height;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                }
+            });
+        }
+
+        function processPose(pose) {
+            if (state.status !== 'playing' || state.isProcessingAnswer) {
+                resetZoneTimer();
+                return;
+            }
+
+            const kp = pose.keypoints;
+            // Get shoulders and hips to find center of body
+            const leftShoulder = kp.find(k => k.name === 'left_shoulder');
+            const rightShoulder = kp.find(k => k.name === 'right_shoulder');
+            const leftHip = kp.find(k => k.name === 'left_hip');
+            const rightHip = kp.find(k => k.name === 'right_hip');
+
+            // Need at least 3 points to roughly estimate center
+            let validPoints = [leftShoulder, rightShoulder, leftHip, rightHip].filter(p => p && p.score > 0.5);
+            
+            if (validPoints.length >= 2) {
+                let sumX = 0, sumY = 0;
+                validPoints.forEach(p => {
+                    // Mirror X coordinate for logic!
+                    sumX += canvas.width - (p.x / video.videoWidth * canvas.width);
+                    sumY += p.y / video.videoHeight * canvas.height;
+                });
+                
+                const centerX = sumX / validPoints.length;
+                const centerY = sumY / validPoints.length;
+
+                // Visual debug for center
+                /*
+                const indicator = document.getElementById('body-center-indicator');
+                indicator.style.display = 'block';
+                indicator.style.left = centerX + 'px';
+                indicator.style.top = centerY + 'px';
+                */
+
+                determineZone(centerX, centerY);
+            } else {
+                resetZoneTimer();
+            }
+        }
+
+        function determineZone(x, y) {
+            const w = canvas.width;
+            const h = canvas.height;
+            let currentZone = null;
+
+            const qInfo = state.questions[state.currentQuestionIndex];
+            const isBonus = qInfo.isBonus;
+
+            // Buffer zone in the middle to prevent accidental switching (deadzone)
+            const deadzoneX = w * 0.1; // 10% middle deadzone
+            const deadzoneY = isBonus ? h * 0.1 : 0; // Only use Y deadzone in bonus
+
+            if (!isBonus) {
+                // 2 Zones
+                if (x < (w/2) - (deadzoneX/2)) currentZone = 'left';
+                else if (x > (w/2) + (deadzoneX/2)) currentZone = 'right';
+            } else {
+                // 4 Zones
+                let xZone = null, yZone = null;
+                
+                if (x < (w/2) - (deadzoneX/2)) xZone = 'l';
+                else if (x > (w/2) + (deadzoneX/2)) xZone = 'r';
+
+                if (y < (h/2) - (deadzoneY/2)) yZone = 't';
+                else if (y > (h/2) + (deadzoneY/2)) yZone = 'b';
+
+                if (xZone && yZone) {
+                    currentZone = yZone + xZone; // tl, tr, bl, br
+                }
+            }
+
+            if (currentZone) {
+                if (state.activeZone !== currentZone) {
+                    // Entered new zone
+                    state.activeZone = currentZone;
+                    state.zoneEntryTime = Date.now();
+                    updateZoneUI(currentZone);
+                } else {
+                    // Continuing in same zone
+                    const timeInZone = Date.now() - state.zoneEntryTime;
+                    updateZoneProgress(currentZone, timeInZone);
+
+                    if (timeInZone >= REQUIRED_HOVER_TIME) {
+                        handleSelection(currentZone);
+                    }
+                }
+            } else {
+                // In deadzone
+                resetZoneTimer();
+            }
+        }
+
+        function resetZoneTimer() {
+            if (state.activeZone) {
+                state.activeZone = null;
+                updateZoneUI(null);
+            }
+        }
+
+        function updateZoneUI(activeZoneId) {
+            // Remove active classes
+            document.querySelectorAll('.zone').forEach(z => {
+                z.classList.remove('active-hover');
+                const bar = z.querySelector('.select-progress-bar');
+                if (bar) bar.style.width = '0%';
+            });
+
+            if (activeZoneId) {
+                const el = document.getElementById(`zone-${activeZoneId}`);
+                if (el) el.classList.add('active-hover');
+            }
+        }
+
+        function updateZoneProgress(zoneId, timeInMs) {
+            const el = document.getElementById(`zone-${zoneId}`);
+            if (el) {
+                const bar = el.querySelector('.select-progress-bar');
+                if (bar) {
+                    const percentage = Math.min(100, (timeInMs / REQUIRED_HOVER_TIME) * 100);
+                    bar.style.width = `${percentage}%`;
+                }
+            }
+        }
+
+        // --- 5. GAME LOGIC ---
+
+        document.getElementById('setup-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Init Audio Context on user gesture
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            state.settings.totalQuestions = parseInt(document.getElementById('setting-questions').value);
+            state.settings.timePerQuestion = parseInt(document.getElementById('setting-time').value);
+            state.settings.bonusEnabled = document.getElementById('setting-bonus').checked;
+            state.settings.soundEnabled = document.getElementById('setting-sound').checked;
+
+            prepareGame();
+        });
+
+        function shuffle(array) {
+            let currentIndex = array.length,  randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        function prepareGame() {
+            state.questions = [];
+            const shuffledVocab = shuffle([...vocabPool]);
+
+            for (let i = 0; i < state.settings.totalQuestions; i++) {
+                const isBonus = state.settings.bonusEnabled && (i + 1) % 5 === 0;
+                
+                // Pick correct answer
+                const correctItem = shuffledVocab[i % shuffledVocab.length];
+                
+                if (!isBonus) {
+                    // Normal 2 options
+                    let wrongItem;
+                    do {
+                        wrongItem = vocabPool[Math.floor(Math.random() * vocabPool.length)];
+                    } while (wrongItem.word === correctItem.word);
+
+                    const isLeftCorrect = Math.random() > 0.5;
+                    
+                    state.questions.push({
+                        isBonus: false,
+                        hint: correctItem.hint,
+                        correctWord: correctItem.word,
+                        left: isLeftCorrect ? correctItem : wrongItem,
+                        right: isLeftCorrect ? wrongItem : correctItem,
+                        correctZone: isLeftCorrect ? 'left' : 'right'
+                    });
+                } else {
+                    // Bonus 4 options
+                    let options = [correctItem];
+                    while(options.length < 4) {
+                        let wrongItem = vocabPool[Math.floor(Math.random() * vocabPool.length)];
+                        if (!options.find(o => o.word === wrongItem.word)) {
+                            options.push(wrongItem);
+                        }
+                    }
+                    options = shuffle(options);
+                    
+                    let correctZoneId;
+                    const zones = ['tl', 'tr', 'bl', 'br'];
+                    const mappedOptions = {};
+                    
+                    options.forEach((opt, idx) => {
+                        mappedOptions[zones[idx]] = opt;
+                        if (opt.word === correctItem.word) correctZoneId = zones[idx];
+                    });
+
+                    state.questions.push({
+                        isBonus: true,
+                        hint: "BONUS! Find: " + correctItem.word,
+                        correctWord: correctItem.word,
+                        options: mappedOptions,
+                        correctZone: correctZoneId
+                    });
+                }
+            }
+
+            // UI Transitions
+            document.getElementById('setup-screen').classList.remove('active');
+            document.getElementById('game-screen').classList.add('active');
+            
+            // Start Loop
+            detectPose();
+            
+            // Start Game
+            state.status = 'playing';
+            state.currentQuestionIndex = 0;
+            state.currentTeam = 'A';
+            state.scores = { A: 0, B: 0 };
+            state.combos = { A: 0, B: 0 };
+            updateScoreUI();
+            
+            showQuestion();
+        }
+
+        function showQuestion() {
+            state.isProcessingAnswer = false;
+            resetZoneTimer();
+            
+            const q = state.questions[state.currentQuestionIndex];
+            
+            // Update UI Team Focus
+            document.getElementById('team-a-score').classList.toggle('active-team', state.currentTeam === 'A');
+            document.getElementById('team-b-score').classList.toggle('active-team', state.currentTeam === 'B');
+
+            // Render Zones & Text
+            const container = document.getElementById('zones-container');
+            container.innerHTML = '';
+
+            const qBox = document.getElementById('question-box');
+            
+            if (!q.isBonus) {
+                // Normal UI
+                qBox.className = 'glass-panel';
+                qBox.style.background = 'rgba(17, 24, 39, 0.7)';
+                document.getElementById('q-number').innerText = `Question ${state.currentQuestionIndex + 1} - Team ${state.currentTeam}`;
+                document.getElementById('q-text').innerText = q.hint;
+
+                container.innerHTML = `
+                    <div id="zone-left" class="zone zone-left">
+                        <div class="zone-text text-blue-300">${q.left.icon}<br>${q.left.word}</div>
+                        <div class="select-progress"><div class="select-progress-bar"></div></div>
+                    </div>
+                    <div id="zone-right" class="zone zone-right">
+                        <div class="zone-text text-red-300">${q.right.icon}<br>${q.right.word}</div>
+                        <div class="select-progress"><div class="select-progress-bar"></div></div>
+                    </div>
+                `;
+                
+                startTimer(state.settings.timePerQuestion);
+
+            } else {
+                // Bonus UI
+                playSound('bonus');
+                qBox.className = 'glass-panel active-team'; // pulse effect
+                qBox.style.background = 'linear-gradient(90deg, #9333ea, #db2777)';
+                document.getElementById('q-number').innerHTML = `⚡ BONUS ROUND - Team ${state.currentTeam} ⚡`;
+                document.getElementById('q-text').innerText = q.hint;
+
+                container.innerHTML = `
+                    <div id="zone-tl" class="zone zone-tl">
+                        <div class="zone-text text-purple-300 text-3xl">${q.options.tl.icon} ${q.options.tl.word}</div>
+                        <div class="select-progress"><div class="select-progress-bar"></div></div>
+                    </div>
+                    <div id="zone-tr" class="zone zone-tr">
+                        <div class="zone-text text-purple-300 text-3xl">${q.options.tr.icon} ${q.options.tr.word}</div>
+                        <div class="select-progress"><div class="select-progress-bar"></div></div>
+                    </div>
+                    <div id="zone-bl" class="zone zone-bl">
+                        <div class="zone-text text-purple-300 text-3xl">${q.options.bl.icon} ${q.options.bl.word}</div>
+                        <div class="select-progress"><div class="select-progress-bar"></div></div>
+                    </div>
+                    <div id="zone-br" class="zone zone-br">
+                        <div class="zone-text text-purple-300 text-3xl">${q.options.br.icon} ${q.options.br.word}</div>
+                        <div class="select-progress"><div class="select-progress-bar"></div></div>
+                    </div>
+                `;
+
+                startTimer(5); // Faster for bonus
+            }
+        }
+
+        function startTimer(seconds) {
+            clearInterval(state.timerInterval);
+            state.timer = seconds;
+            updateTimerUI();
+
+            state.timerInterval = setInterval(() => {
+                state.timer--;
+                updateTimerUI();
+
+                if (state.timer <= 3 && state.timer > 0) {
+                    playSound('tick');
+                    document.getElementById('timer-box').classList.add('timer-warning');
+                } else {
+                    document.getElementById('timer-box').classList.remove('timer-warning');
+                }
+
+                if (state.timer <= 0) {
+                    clearInterval(state.timerInterval);
+                    handleTimeOut();
+                }
+            }, 1000);
+        }
+
+        function updateTimerUI() {
+            document.getElementById('timer-box').innerText = state.timer;
+        }
+
+        function handleSelection(selectedZoneId) {
+            if (state.isProcessingAnswer) return;
+            state.isProcessingAnswer = true;
+            clearInterval(state.timerInterval);
+
+            const q = state.questions[state.currentQuestionIndex];
+            const isCorrect = selectedZoneId === q.correctZone;
+
+            // Highlight selected
+            const el = document.getElementById(`zone-${selectedZoneId}`);
+            if(el) el.style.backgroundColor = isCorrect ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)';
+
+            processResult(isCorrect, q.isBonus);
+        }
+
+        function handleTimeOut() {
+            if (state.isProcessingAnswer) return;
+            state.isProcessingAnswer = true;
+            processResult(false, state.questions[state.currentQuestionIndex].isBonus, true);
+        }
+
+        function processResult(isCorrect, isBonus, isTimeOut = false) {
+            let points = 0;
+            const team = state.currentTeam;
+
+            if (isCorrect) {
+                playSound('correct');
+                state.stats.correct++;
+                
+                points = isBonus ? 30 : 10;
+                if (isBonus) state.stats.bonusGot++;
+
+                // Combo system
+                state.combos[team]++;
+                if (state.combos[team] >= 3 && !isBonus) {
+                    points += 5; // Combo bonus
+                }
+
+                showFeedback(true, isBonus ? `+${points} BONUS!` : (state.combos[team] >= 3 ? `+${points} COMBO🔥` : `+${points} CORRECT!`));
+                triggerConfetti();
+
+            } else {
+                playSound('wrong');
+                state.stats.wrong++;
+                state.combos[team] = 0; // Reset combo
+                
+                points = isBonus ? 0 : -5;
+                showFeedback(false, isTimeOut ? "TIME OUT!" : "WRONG!");
+            }
+
+            // Apply points
+            state.scores[team] += points;
+            updateScoreUI();
+
+            // Wait then next
+            setTimeout(() => {
+                document.getElementById('feedback-popup').classList.remove('show');
+                
+                state.currentQuestionIndex++;
+                
+                if (state.currentQuestionIndex >= state.questions.length) {
+                    endGame();
+                } else {
+                    // Switch team
+                    state.currentTeam = state.currentTeam === 'A' ? 'B' : 'A';
+                    showQuestion();
+                }
+            }, 2000);
+        }
+
+        function updateScoreUI() {
+            document.querySelector('#team-a-score .score-val').innerText = state.scores.A;
+            document.querySelector('#team-b-score .score-val').innerText = state.scores.B;
+            
+            document.querySelector('#team-a-score .combo-text').innerText = state.combos.A >= 3 ? `🔥 ${state.combos.A} COMBO` : '';
+            document.querySelector('#team-b-score .combo-text').innerText = state.combos.B >= 3 ? `🔥 ${state.combos.B} COMBO` : '';
+        }
+
+        function showFeedback(isCorrect, text) {
+            const popup = document.getElementById('feedback-popup');
+            const icon = document.getElementById('feedback-icon');
+            const txt = document.getElementById('feedback-text');
+
+            popup.className = isCorrect ? 'feedback-correct' : 'feedback-wrong';
+            icon.innerHTML = isCorrect ? '<i class="fas fa-check-circle"></i>' : '<i class="fas fa-times-circle"></i>';
+            txt.innerText = text;
+
+            popup.classList.add('show');
+        }
+
+        function triggerConfetti() {
+            var duration = 1500;
+            var end = Date.now() + duration;
+
+            (function frame() {
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 },
+                    colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff']
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 },
+                    colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff']
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+        }
+
+        function endGame() {
+            state.status = 'gameover';
+            cancelAnimationFrame(animationFrameId);
+            if(video.srcObject) {
+               video.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            document.getElementById('game-screen').classList.remove('active');
+            document.getElementById('result-screen').classList.add('active');
+
+            // Set final stats
+            document.getElementById('final-score-a').innerText = state.scores.A;
+            document.getElementById('final-score-b').innerText = state.scores.B;
+            
+            document.getElementById('stat-correct').innerText = state.stats.correct;
+            document.getElementById('stat-wrong').innerText = state.stats.wrong;
+            document.getElementById('stat-bonus').innerText = state.stats.bonusGot;
+
+            const winnerText = document.getElementById('winner-name');
+            if (state.scores.A > state.scores.B) {
+                winnerText.innerText = 'TEAM A';
+                winnerText.className = 'text-blue-400';
+            } else if (state.scores.B > state.scores.A) {
+                winnerText.innerText = 'TEAM B';
+                winnerText.className = 'text-red-400';
+            } else {
+                winnerText.innerText = 'DRAW';
+                winnerText.className = 'text-white';
+                document.getElementById('winner-announcement').innerHTML = `🤝 IT'S A <span class="text-white">DRAW</span>!`;
+            }
+
+            // Big confetti
+            setTimeout(() => {
+                confetti({
+                    particleCount: 200,
+                    spread: 160,
+                    origin: { y: 0.6 }
+                });
+                playSound('bonus');
+            }, 500);
+        }
+
+        // --- 6. START APPLICATION ---
+        window.onload = initAI;
+
+    </script>
+</body>
+</html>
